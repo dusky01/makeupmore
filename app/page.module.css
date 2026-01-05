@@ -101,8 +101,11 @@
 .messagesContainer {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 20px;
   background: #f8f9fa;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
 }
 
 .emptyState {
