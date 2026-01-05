@@ -14,7 +14,9 @@ export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([])
   const [inputText, setInputText] = useState('')
   const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
   const [isJoined, setIsJoined] = useState(false)
+  const [error, setError] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
@@ -46,9 +48,16 @@ export default function Chat() {
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault()
-    if (username.trim()) {
-      setIsJoined(true)
+    if (!username.trim()) {
+      setError('Please enter your name')
+      return
     }
+    if (password !== 'idgasf') {
+      setError('Incorrect password')
+      return
+    }
+    setError('')
+    setIsJoined(true)
   }
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -73,17 +82,25 @@ export default function Chat() {
     } catch (error) {
       console.error('Error sending message:', error)
     }
-  }
-
-  if (!isJoined) {
-    return (
-      <div className={styles.container}>
-        <div className={styles.joinCard}>
-          <h1 className={styles.title}>Two Person Chat</h1>
-          <p className={styles.subtitle}>Enter your name to join</p>
+  }and password to join</p>
           <form onSubmit={handleJoin} className={styles.joinForm}>
             <input
               type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Your name"
+              className={styles.joinInput}
+              maxLength={20}
+              autoFocus
+            />
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              className={styles.joinInput}
+            />
+            {error && <p className={styles.error}>{error}</p>}type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="Your name"

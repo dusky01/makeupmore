@@ -45,6 +45,13 @@
   border-color: #667eea;
 }
 
+.error {
+  color: #e74c3c;
+  font-size: 0.9rem;
+  margin: 0;
+  text-align: center;
+}
+
 .joinButton {
   padding: 15px;
   font-size: 1.1rem;
