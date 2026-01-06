@@ -45,17 +45,21 @@ export default function Chat() {
   useEffect(() => {
     if (localStream && localVideoRef.current) {
       localVideoRef.current.srcObject = localStream
+      localVideoRef.current.play().catch(e => console.error('Error playing local:', e))
     }
   }, [localStream])
 
   useEffect(() => {
-    if (remoteStream && remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = remoteStream
-      remoteVideoRef.current.play().catch(e => console.error('Error playing remote:', e))
-    }
-    if (remoteStream && remoteAudioRef.current) {
-      remoteAudioRef.current.srcObject = remoteStream
-      remoteAudioRef.current.play().catch(e => console.error('Error playing remote audio:', e))
+    if (remoteStream) {
+      console.log('Remote stream updated, tracks:', remoteStream.getTracks().map(t => t.kind))
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStream
+        remoteVideoRef.current.play().catch(e => console.error('Error playing remote video:', e))
+      }
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = remoteStream
+        remoteAudioRef.current.play().catch(e => console.error('Error playing remote audio:', e))
+      }
     }
   }, [remoteStream])
 
@@ -113,8 +117,8 @@ export default function Chat() {
     }
   }
 
-  const endCall = () => {
-    console.log('Ending call')
+  const endCall = (sendSignal = true) => {
+    console.log('Ending call, sendSignal:', sendSignal)
     if (localStream) {
       localStream.getTracks().forEach(track => {
         track.stop()
@@ -132,14 +136,16 @@ export default function Chat() {
     pendingCandidatesRef.current = []
     window.sessionStorage.removeItem('pendingOffer')
 
-    fetch('/api/call', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from: username,
-        signal: { type: 'end' }
-      })
-    }).catch(e => console.error('Error sending end signal:', e))
+    if (sendSignal) {
+      fetch('/api/call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: username,
+          signal: { type: 'end' }
+        })
+      }).catch(e => console.error('Error sending end signal:', e))
+    }
   }
 
   useEffect(() => {
@@ -182,20 +188,22 @@ export default function Chat() {
             if (signal.candidate) {
               console.log('Received signal: candidate')
               await handleIceCandidate(signal.candidate)
-            } else if (signal.type === 'offer' && callStatus === 'idle') {
+            } else if (signal.type === 'offer') {
               console.log('Received signal: offer')
-              setIncomingCallType(signal.callType || 'audio')
-              setCallStatus('incoming')
-              // Store the offer for when user answers
-              window.sessionStorage.setItem('pendingOffer', JSON.stringify(signal))
-            } else if (signal.type === 'answer' && callStatus === 'calling') {
+              if (callStatus === 'idle') {
+                setIncomingCallType(signal.callType || 'audio')
+                setCallStatus('incoming')
+                // Store the offer for when user answers
+                window.sessionStorage.setItem('pendingOffer', JSON.stringify(signal))
+              }
+            } else if (signal.type === 'answer') {
               console.log('Received signal: answer')
-              await handleAnswer(signal.sdp)
+              if (callStatus === 'calling') {
+                await handleAnswer(signal.sdp)
+              }
             } else if (signal.type === 'end') {
-              console.log('Received signal: end')
-              endCall()
-            } else {
-              console.log('Received signal:', signal.type)
+              console.log('Received signal: end - ending call')
+              endCall(false)
             }
           }
         }
@@ -340,9 +348,14 @@ export default function Chat() {
     pc.oniceconnectionstatechange = () => {
       console.log('ICE connection state:', pc.iceConnectionState)
       if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        console.log('Call connected!')
         setCallStatus('connected')
-      } else if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
-        console.log('Call disconnected')
+      } else if (pc.iceConnectionState === 'failed') {
+        console.log('Call failed')
+        alert('Connection failed. Please try again.')
+        endCall()
+      } else if (pc.iceConnectionState === 'closed') {
+        console.log('Call closed')
         endCall()
       }
     }
@@ -566,7 +579,7 @@ export default function Chat() {
               <span className={styles.callingText}>Calling...</span>
             )}
             {inCall && (
-              <button onClick={endCall} className={styles.endCallButton}>
+              <button onClick={() => endCall(true)} className={styles.endCallButton}>
                 End Call
               </button>
             )}
