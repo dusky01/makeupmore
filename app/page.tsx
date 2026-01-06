@@ -37,6 +37,20 @@ export default function Chat() {
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
+  const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([])
+
+  useEffect(() => {
+    if (localStream && localVideoRef.current) {
+      localVideoRef.current.srcObject = localStream
+    }
+  }, [localStream])
+
+  useEffect(() => {
+    if (remoteStream && remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = remoteStream
+      remoteVideoRef.current.play().catch(e => console.error('Error playing remote:', e))
+    }
+  }, [remoteStream])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -201,12 +215,14 @@ export default function Chat() {
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' }
       ]
     })
 
     pc.onicecandidate = async (event) => {
       if (event.candidate) {
+        console.log('Sending ICE candidate')
         await fetch('/api/call', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -219,16 +235,22 @@ export default function Chat() {
     }
 
     pc.ontrack = (event) => {
-      console.log('Received remote track:', event.streams[0])
-      setRemoteStream(event.streams[0])
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = event.streams[0]
-        remoteVideoRef.current.play().catch(e => console.error('Error playing remote:', e))
+      console.log('Received remote track:', event.track.kind)
+      const stream = event.streams[0]
+      if (stream) {
+        setRemoteStream(stream)
       }
     }
 
     pc.oniceconnectionstatechange = () => {
       console.log('ICE connection state:', pc.iceConnectionState)
+      if (pc.iceConnectionState === 'connected') {
+        setCallStatus('connected')
+      }
+    }
+
+    pc.onsignalingstatechange = () => {
+      console.log('Signaling state:', pc.signalingState)
     }
 
     peerConnectionRef.current = pc
@@ -237,20 +259,26 @@ export default function Chat() {
 
   const startCall = async (type: 'audio' | 'video') => {
     try {
+      console.log('Starting call:', type)
       setCallType(type)
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: type === 'video', 
+        video: type === 'video' ? { width: 640, height: 480 } : false, 
         audio: true 
       })
+      console.log('Got local stream:', stream.getTracks().map(t => t.kind))
       setLocalStream(stream)
-      if (localVideoRef.current && type === 'video') {
-        localVideoRef.current.srcObject = stream
-      }
 
       const pc = initializePeerConnection()
-      stream.getTracks().forEach(track => pc.addTrack(track, stream))
+      stream.getTracks().forEach(track => {
+        console.log('Adding track:', track.kind)
+        pc.addTrack(track, stream)
+      })
 
-      const offer = await pc.createOffer()
+      const offer = await pc.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: type === 'video'
+      })
+      console.log('Created offer')
       await pc.setLocalDescription(offer)
 
       await fetch('/api/call', {
@@ -266,33 +294,42 @@ export default function Chat() {
       setInCall(true)
     } catch (error) {
       console.error('Error starting call:', error)
-      alert('Could not access microphone/camera')
-    }
-  }
-
-  const answerCall = async () => {
-    try {
+      alerole.log('Answering call')
       const response = await fetch(`/api/call?user=${username}`)
       const data = await response.json()
       
       const type = data.signal?.callType || 'audio'
+      console.log('Call type:', type)
       setCallType(type)
 
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: type === 'video', 
+        video: type === 'video' ? { width: 640, height: 480 } : false, 
         audio: true 
       })
+      console.log('Got local stream:', stream.getTracks().map(t => t.kind))
       setLocalStream(stream)
-      if (localVideoRef.current && type === 'video') {
-        localVideoRef.current.srcObject = stream
-      }
 
       const pc = initializePeerConnection()
-      stream.getTracks().forEach(track => pc.addTrack(track, stream))
+      stream.getTracks().forEach(track => {
+        console.log('Adding track:', track.kind)
+        pc.addTrack(track, stream)
+      })
       
       if (data.signal && data.signal.type === 'offer') {
+        console.log('Setting remote description (offer)')
         await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: data.signal.sdp }))
+        
+        // Add any pending ICE candidates
+        if (pendingCandidatesRef.current.length > 0) {
+          console.log('Adding pending ICE candidates:', pendingCandidatesRef.current.length)
+          for (const candidate of pendingCandidatesRef.current) {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate))
+          }
+          pendingCandidatesRef.current = []
+        }
+        
         const answer = await pc.createAnswer()
+        console.log('Created answer')
         await pc.setLocalDescription(answer)
 
         await fetch('/api/call', {
@@ -309,17 +346,16 @@ export default function Chat() {
       }
     } catch (error) {
       console.error('Error answering call:', error)
-      alert('Could not access microphone/camera')
-    }
-  }
-
-  const handleAnswer = async (sdp: string) => {
-    try {
-      const pc = peerConnectionRef.current
-      if (pc && pc.signalingState !== 'stable') {
-        console.log('Setting remote description for answer')
-        await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp }))
-        setCallStatus('connected')
+      alert('Could not access microphone/camera. Please check permissions.
+        
+        // Add any pending ICE candidates
+        if (pendingCandidatesRef.current.length > 0) {
+          console.log('Adding pending ICE candidates:', pendingCandidatesRef.current.length)
+          for (const candidate of pendingCandidatesRef.current) {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate))
+          }
+          pendingCandidatesRef.current = []
+        }
       }
     } catch (error) {
       console.error('Error handling answer:', error)
@@ -330,6 +366,27 @@ export default function Chat() {
     try {
       const pc = peerConnectionRef.current
       if (pc) {
+        if (pc.remoteDescription && pc.remoteDescription.type) {
+          console.log('Adding ICE candidate')
+          await pc.addIceCandidate(new RTCIceCandidate(candidate))
+        } else {
+          console.log('Queuing ICE candidate for later')
+    console.log('Ending call')
+    if (localStream) {
+      localStream.getTracks().forEach(track => {
+        track.stop()
+        console.log('Stopped track:', track.kind)
+      })
+      setLocalStream(null)
+    }
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close()
+      peerConnectionRef.current = null
+    }
+    setRemoteStream(null)
+    setCallStatus('idle')
+    setInCall(false)
+    pendingCandidatesRef.current = []
         if (pc.remoteDescription) {
           console.log('Adding ICE candidate')
           await pc.addIceCandidate(new RTCIceCandidate(candidate))
