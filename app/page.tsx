@@ -219,10 +219,16 @@ export default function Chat() {
     }
 
     pc.ontrack = (event) => {
+      console.log('Received remote track:', event.streams[0])
       setRemoteStream(event.streams[0])
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = event.streams[0]
+        remoteVideoRef.current.play().catch(e => console.error('Error playing remote:', e))
       }
+    }
+
+    pc.oniceconnectionstatechange = () => {
+      console.log('ICE connection state:', pc.iceConnectionState)
     }
 
     peerConnectionRef.current = pc
@@ -310,7 +316,8 @@ export default function Chat() {
   const handleAnswer = async (sdp: string) => {
     try {
       const pc = peerConnectionRef.current
-      if (pc) {
+      if (pc && pc.signalingState !== 'stable') {
+        console.log('Setting remote description for answer')
         await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp }))
         setCallStatus('connected')
       }
@@ -322,8 +329,13 @@ export default function Chat() {
   const handleIceCandidate = async (candidate: RTCIceCandidateInit) => {
     try {
       const pc = peerConnectionRef.current
-      if (pc && pc.remoteDescription) {
-        await pc.addIceCandidate(new RTCIceCandidate(candidate))
+      if (pc) {
+        if (pc.remoteDescription) {
+          console.log('Adding ICE candidate')
+          await pc.addIceCandidate(new RTCIceCandidate(candidate))
+        } else {
+          console.log('Waiting for remote description before adding ICE candidate')
+        }
       }
     } catch (error) {
       console.error('Error handling ICE candidate:', error)
@@ -440,14 +452,30 @@ export default function Chat() {
           <div className={styles.videoContainer}>
             {callType === 'video' ? (
               <>
-                <video ref={remoteVideoRef} autoPlay playsInline className={styles.remoteVideo} />
-                <video ref={localVideoRef} autoPlay playsInline muted className={styles.localVideo} />
+                <video 
+                  ref={remoteVideoRef} 
+                  autoPlay 
+                  playsInline 
+                  className={styles.remoteVideo}
+                />
+                <video 
+                  ref={localVideoRef} 
+                  autoPlay 
+                  playsInline 
+                  muted 
+                  className={styles.localVideo}
+                />
               </>
             ) : (
               <div className={styles.audioCall}>
                 <div className={styles.audioCallIcon}>🎵</div>
-                <p className={styles.audioCallText}>{callStatus === 'calling' ? 'Calling...' : 'Audio Call in Progress'}</p>
-                <audio ref={remoteVideoRef as any} autoPlay />
+                <p className={styles.audioCallText}>
+                  {callStatus === 'calling' ? 'Calling...' : 'Audio Call in Progress'}
+                </p>
+                <p className={styles.audioCallSubtext}>
+                  {callStatus === 'connected' ? '✓ Connected' : 'Connecting...'}
+                </p>
+                <audio ref={remoteVideoRef as any} autoPlay playsInline />
               </div>
             )}
           </div>
