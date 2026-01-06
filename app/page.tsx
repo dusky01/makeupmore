@@ -26,6 +26,7 @@ export default function Chat() {
   const [isTyping, setIsTyping] = useState(false)
   const [otherUserTyping, setOtherUserTyping] = useState(false)
   const [inCall, setInCall] = useState(false)
+  const [callType, setCallType] = useState<'audio' | 'video'>('audio')
   const [callStatus, setCallStatus] = useState<'idle' | 'calling' | 'incoming' | 'connected'>('idle')
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
@@ -228,11 +229,15 @@ export default function Chat() {
     return pc
   }
 
-  const startCall = async () => {
+  const startCall = async (type: 'audio' | 'video') => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      setCallType(type)
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: type === 'video', 
+        audio: true 
+      })
       setLocalStream(stream)
-      if (localVideoRef.current) {
+      if (localVideoRef.current && type === 'video') {
         localVideoRef.current.srcObject = stream
       }
 
@@ -247,7 +252,7 @@ export default function Chat() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           from: username,
-          signal: { type: 'offer', sdp: offer.sdp }
+          signal: { type: 'offer', sdp: offer.sdp, callType: type }
         })
       })
 
@@ -255,23 +260,29 @@ export default function Chat() {
       setInCall(true)
     } catch (error) {
       console.error('Error starting call:', error)
-      alert('Could not access camera/microphone')
+      alert('Could not access microphone/camera')
     }
   }
 
   const answerCall = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      const response = await fetch(`/api/call?user=${username}`)
+      const data = await response.json()
+      
+      const type = data.signal?.callType || 'audio'
+      setCallType(type)
+
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: type === 'video', 
+        audio: true 
+      })
       setLocalStream(stream)
-      if (localVideoRef.current) {
+      if (localVideoRef.current && type === 'video') {
         localVideoRef.current.srcObject = stream
       }
 
       const pc = initializePeerConnection()
       stream.getTracks().forEach(track => pc.addTrack(track, stream))
-
-      const response = await fetch(`/api/call?user=${username}`)
-      const data = await response.json()
       
       if (data.signal && data.signal.type === 'offer') {
         await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: data.signal.sdp }))
@@ -292,6 +303,7 @@ export default function Chat() {
       }
     } catch (error) {
       console.error('Error answering call:', error)
+      alert('Could not access microphone/camera')
     }
   }
 
@@ -393,9 +405,17 @@ export default function Chat() {
           <h2 className={styles.headerTitle}>Chat Room</h2>
           <div className={styles.headerRight}>
             {!inCall && callStatus === 'idle' && (
-              <button onClick={startCall} className={styles.callButton}>
-                📹 Call
-              </button>
+              <>
+                <button onClick={() => startCall('audio')} className={styles.callButton}>
+                  📞 Audio Call
+                </button>
+                <button onClick={() => startCall('video')} className={styles.callButton}>
+                  📹 Video Call
+                </button>
+              </>
+            )}
+            {callStatus === 'calling' && (
+              <span className={styles.callingText}>Calling...</span>
             )}
             {inCall && (
               <button onClick={endCall} className={styles.endCallButton}>
@@ -418,8 +438,18 @@ export default function Chat() {
 
         {inCall && (
           <div className={styles.videoContainer}>
-            <video ref={remoteVideoRef} autoPlay playsInline className={styles.remoteVideo} />
-            <video ref={localVideoRef} autoPlay playsInline muted className={styles.localVideo} />
+            {callType === 'video' ? (
+              <>
+                <video ref={remoteVideoRef} autoPlay playsInline className={styles.remoteVideo} />
+                <video ref={localVideoRef} autoPlay playsInline muted className={styles.localVideo} />
+              </>
+            ) : (
+              <div className={styles.audioCall}>
+                <div className={styles.audioCallIcon}>🎵</div>
+                <p className={styles.audioCallText}>{callStatus === 'calling' ? 'Calling...' : 'Audio Call in Progress'}</p>
+                <audio ref={remoteVideoRef as any} autoPlay />
+              </div>
+            )}
           </div>
         )}
 

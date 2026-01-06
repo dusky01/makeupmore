@@ -119,6 +119,17 @@
   background: rgba(255, 255, 255, 0.3);
 }
 
+.callingText {
+  color: white;
+  font-size: 0.9rem;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 .endCallButton {
   padding: 8px 16px;
   background: #e74c3c;
@@ -140,6 +151,18 @@
   color: white;
   padding: 20px;
   text-align: center;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 .incomingCall p {
@@ -203,6 +226,28 @@
   border-radius: 10px;
   border: 2px solid white;
   box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+}
+
+.audioCall {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.audioCallIcon {
+  font-size: 5rem;
+  margin-bottom: 20px;
+  animation: pulse 2s infinite;
+}
+
+.audioCallText {
+  color: white;
+  font-size: 1.5rem;
+  font-weight: 600;
 }
 
 .messagesContainer {
